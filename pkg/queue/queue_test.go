@@ -10,6 +10,14 @@ import (
 const Iterations int = 1000000 // Specifies how many calls are done in all concurrent tests
 
 func TestQueue(t *testing.T) {
+	t.Run("test Add() on manually initialized Queue returns correct error", func(t *testing.T) {
+		q := Queue{}
+		err := q.Add("asd")
+		if err != ErrImproperlyInitializedQueue {
+			t.Errorf("Add() on a manually created queue returned incorrect error %q, expected %q", err, ErrImproperlyInitializedQueue)
+		}
+	})
+
 	t.Run("concurrent Add() and Read()", func(t *testing.T) {
 		q := NewQueue()
 		var wg sync.WaitGroup
@@ -38,11 +46,13 @@ func TestQueue(t *testing.T) {
 			vals[i], _ = strconv.Atoi(val)
 		}
 
-		// Test that we get an error when we Read() after clearing the queue
+		// Test that we get the correct error when we Read() after clearing the queue
 		val, err := q.Read()
 		if err == nil {
-			t.Log("Had extra value(s) in the queue:", val)
-			t.Fail()
+			t.Errorf("Had extra value(s) in the queue: %q", val)
+		}
+		if err != ErrQueueIsEmpty {
+			t.Errorf("Read() on an empty queue returned incorrect error %q, expected %q", err, ErrQueueIsEmpty)
 		}
 
 		// Test that the values Read() from the queue are correct, i.e. 0..Iterations-1
@@ -91,6 +101,9 @@ func TestQueue(t *testing.T) {
 		_, err := q.PeekNext()
 		if err == nil {
 			t.Error("freshly initialized queue, but PeekNext() did not return an error, expected an error")
+		}
+		if err != ErrQueueIsEmpty {
+			t.Errorf("PeekNext() on an empty queue returned incorrect error %q, expected %q", err, ErrQueueIsEmpty)
 		}
 
 		expected := "asd"

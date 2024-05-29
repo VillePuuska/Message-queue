@@ -5,6 +5,12 @@ import (
 	"sync"
 )
 
+var (
+	ErrQueueIsEmpty               = errors.New("queue is empty")
+	ErrImproperlyInitializedQueue = errors.New("improperly initialized queue, tail is nil")
+	ErrUnimplementedMethod        = errors.New("unimplemented")
+)
+
 type node struct {
 	val    string
 	offset int64
@@ -36,7 +42,7 @@ func (q *Queue) Read() (string, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.head.offset == q.tail.offset {
-		return "", errors.New("no new messages")
+		return "", ErrQueueIsEmpty
 	}
 	res := q.head.val
 	q.head = q.head.next
@@ -47,7 +53,7 @@ func (q *Queue) Add(val string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.tail == nil {
-		return errors.New("improperly initialized queue, tail is nil")
+		return ErrImproperlyInitializedQueue
 	}
 	q.tail.val = val
 	n := node{
@@ -62,14 +68,14 @@ func (q *Queue) PeekNext() (string, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.head.offset == q.tail.offset {
-		return "", errors.New("no new messages")
+		return "", ErrQueueIsEmpty
 	}
 	return q.head.val, nil
 }
 
 // TODO
 func (q *Queue) PeekLast() (string, error) {
-	return "", errors.New("unimplemented")
+	return "", ErrUnimplementedMethod
 }
 
 func (q *Queue) Length() int64 {
