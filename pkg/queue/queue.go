@@ -9,13 +9,12 @@ type node struct {
 	val    string
 	offset int64
 	next   *node
-	// prev   *node
 }
 
 type Queue struct {
 	head *node
 	tail *node
-	sync.Mutex
+	mu   sync.Mutex
 }
 
 func NewQueue() *Queue {
@@ -28,8 +27,8 @@ func NewQueue() *Queue {
 }
 
 func (q *Queue) Read() (string, error) {
-	q.Lock()
-	defer q.Unlock()
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	if q.head.offset == q.tail.offset {
 		return "", errors.New("no new messages")
 	}
@@ -39,8 +38,8 @@ func (q *Queue) Read() (string, error) {
 }
 
 func (q *Queue) Add(val string) error {
-	q.Lock()
-	defer q.Unlock()
+	q.mu.Lock()
+	defer q.mu.Unlock()
 	if q.tail == nil {
 		return errors.New("improperly initialized queue, tail is nil")
 	}
