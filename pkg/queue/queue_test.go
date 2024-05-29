@@ -35,15 +35,24 @@ func TestQueue(t *testing.T) {
 			t.Errorf("After %d Add() calls, incorrect offset: was %d, tail value was %q", Iterations, q.tail.offset, q.tail.val)
 		}
 
-		// Test that we can Read() all values
+		// Test that we can concurrently Read() all values
 		vals := make([]int, Iterations)
+		errs := make([]error, Iterations)
 		for i := 0; i < Iterations; i++ {
-			val, err := q.Read()
+			wg.Add(1)
+			go func(index int, wg *sync.WaitGroup) {
+				val, err := q.Read()
+				vals[index], _ = strconv.Atoi(val)
+				errs[index] = err
+				wg.Done()
+			}(i, &wg)
+		}
+		wg.Wait()
+		for _, err := range errs {
 			if err != nil {
-				t.Logf("Could not read all %d messages. Stopped after %d", Iterations, i)
+				t.Logf("Read() returned an error while concurrently reading the queue: %q", err)
 				t.FailNow()
 			}
-			vals[i], _ = strconv.Atoi(val)
 		}
 
 		// Test that we get the correct error when we Read() after clearing the queue
