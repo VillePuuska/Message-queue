@@ -14,7 +14,7 @@ func TestQueue(t *testing.T) {
 		q := NewQueue()
 		var wg sync.WaitGroup
 
-		// Test that tail offset is corerct after concurrent Add() calls
+		// Test that tail offset is correct after concurrent Add() calls
 		for i := 0; i < Iterations; i++ {
 			wg.Add(1)
 			go func(q *Queue, wg *sync.WaitGroup) {
@@ -55,6 +55,126 @@ func TestQueue(t *testing.T) {
 				}
 				t.FailNow()
 			}
+		}
+	})
+
+	t.Run("test IsEmpty()", func(t *testing.T) {
+		q := NewQueue()
+
+		if !q.IsEmpty() {
+			t.Error("freshly initialized queue, but IsEmpty() returned false, should return true")
+		}
+
+		q.Add("asd")
+		if q.IsEmpty() {
+			t.Error("queue has one element, but IsEmpty() returned true, should return false")
+		}
+
+		_, err := q.Read()
+		if err != nil {
+			t.Errorf("queue has an element, but Read() returned an error: %q", err)
+		}
+
+		if !q.IsEmpty() {
+			t.Error("last element was read from queue, but IsEmpty() returned false, should return true")
+		}
+
+		q.Add("")
+		if q.IsEmpty() {
+			t.Error("queue has one element, but IsEmpty() returned true, should return false")
+		}
+	})
+
+	t.Run("test PeekNext()", func(t *testing.T) {
+		q := NewQueue()
+
+		_, err := q.PeekNext()
+		if err == nil {
+			t.Error("freshly initialized queue, but PeekNext() did not return an error, expected an error")
+		}
+
+		expected := "asd"
+		q.Add(expected)
+		got, err := q.PeekNext()
+		if err != nil {
+			t.Error("queue has a message, but PeekNext() returned an error, expected 'nil' error")
+		}
+		if got != expected {
+			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
+		}
+
+		secondExpected := "aaaa"
+		q.Add(secondExpected)
+
+		got, err = q.PeekNext()
+		if err != nil {
+			t.Error("queue has a message, but PeekNext() returned an error, expected 'nil' error")
+		}
+		if got != expected {
+			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
+		}
+
+		_, _ = q.Read()
+		got, err = q.PeekNext()
+		if err != nil {
+			t.Error("queue has a message, but PeekNext() returned an error, expected 'nil' error")
+		}
+		if got != secondExpected {
+			t.Errorf("PeekNext() returned %q, expected %q", got, secondExpected)
+		}
+
+		_, _ = q.Read()
+		_, err = q.PeekNext()
+		if err == nil {
+			t.Error("all messages have been Read() from queue, but PeekNext() did not return an error, expected an error")
+		}
+	})
+
+	t.Run("test Length()", func(t *testing.T) {
+		q := NewQueue()
+
+		got := q.Length()
+		if got != 0 {
+			t.Errorf("freshly initialized queue, but Length() returned %d, expected 0", got)
+		}
+
+		q.Add("asd")
+		got = q.Length()
+		if got != 1 {
+			t.Errorf("Length() returned %d, expected 1", got)
+		}
+
+		q.Add("aaaaaa")
+		got = q.Length()
+		if got != 2 {
+			t.Errorf("Length() returned %d, expected 2", got)
+		}
+
+		_, _ = q.Read()
+		got = q.Length()
+		if got != 1 {
+			t.Errorf("Length() returned %d, expected 1", got)
+		}
+
+		_, _ = q.Read()
+		got = q.Length()
+		if got != 0 {
+			t.Errorf("Length() returned %d, expected 0", got)
+		}
+
+		// Test that Length() is correct after concurrent Add() calls
+		var wg sync.WaitGroup
+		for i := 0; i < Iterations; i++ {
+			wg.Add(1)
+			go func(q *Queue, wg *sync.WaitGroup) {
+				q.Add("asd")
+				wg.Done()
+			}(q, &wg)
+		}
+		wg.Wait()
+		got = q.Length()
+		if got != int64(Iterations) {
+			t.Errorf("After %d Add() calls, Length() returned %d, expected %d", Iterations, got, Iterations)
 		}
 	})
 }

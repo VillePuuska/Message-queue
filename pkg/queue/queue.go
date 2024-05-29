@@ -26,6 +26,12 @@ func NewQueue() *Queue {
 	return &res
 }
 
+func (q *Queue) IsEmpty() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.head.offset == q.tail.offset
+}
+
 func (q *Queue) Read() (string, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -50,4 +56,24 @@ func (q *Queue) Add(val string) error {
 	q.tail.next = &n
 	q.tail = &n
 	return nil
+}
+
+func (q *Queue) PeekNext() (string, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.head.offset == q.tail.offset {
+		return "", errors.New("no new messages")
+	}
+	return q.head.val, nil
+}
+
+// TODO
+func (q *Queue) PeekLast() (string, error) {
+	return "", errors.New("unimplemented")
+}
+
+func (q *Queue) Length() int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.tail.offset - q.head.offset
 }
