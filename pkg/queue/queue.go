@@ -44,6 +44,16 @@ func (q *Queue) isEmptyNoLock() bool {
 	return q.head.offset == q.tail.offset
 }
 
+func (q *Queue) Length() int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.lengthNoLock()
+}
+
+func (q *Queue) lengthNoLock() int64 {
+	return q.tail.offset - q.head.offset
+}
+
 func (q *Queue) Add(val string) error {
 	return q.AddMany([]string{val})
 }
@@ -77,12 +87,12 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 	if limit <= 0 {
 		return []string{}, ErrInvalidLimit
 	}
-	length := q.Length()
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	length := q.lengthNoLock()
 	if length <= math.MaxInt {
 		limit = min(limit, int(length))
 	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
 	if q.isEmptyNoLock() {
 		return []string{}, ErrQueueIsEmpty
 	}
@@ -108,10 +118,4 @@ func (q *Queue) PeekNext() (string, error) {
 // TODO
 func (q *Queue) PeekLast() (string, error) {
 	return "", ErrUnimplementedMethod
-}
-
-func (q *Queue) Length() int64 {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.tail.offset - q.head.offset
 }
