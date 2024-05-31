@@ -79,7 +79,7 @@ func TestQueue(t *testing.T) {
 		}
 	})
 
-	t.Run("test ReadMany", func(t *testing.T) {
+	t.Run("test AddMany and ReadMany", func(t *testing.T) {
 		q := NewQueue()
 
 		_, err := q.ReadMany(1)
@@ -103,20 +103,13 @@ func TestQueue(t *testing.T) {
 		}
 
 		expected = make([]string, Iterations)
-		var wg sync.WaitGroup
 		for i := 0; i < Iterations; i++ {
-			wg.Add(1)
-			go func(q *Queue, wg *sync.WaitGroup) {
-				q.Add(strconv.Itoa(i))
-				wg.Done()
-			}(q, &wg)
 			expected[i] = strconv.Itoa(i)
 		}
-		wg.Wait()
-		slices.Sort(expected)
+		err = q.AddMany(expected)
+		assertError(t, err, nil, "AddMany returned an unexpected error", false)
 		got, err = q.ReadMany(Iterations)
 		assertError(t, err, nil, fmt.Sprintf("queue has %d messages but ReadMany(%d) returned an error", Iterations, Iterations), false)
-		slices.Sort(got)
 		if !reflect.DeepEqual(got, expected) {
 			for i := range got {
 				if got[i] == expected[i] {

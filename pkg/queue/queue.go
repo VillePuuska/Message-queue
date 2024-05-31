@@ -45,17 +45,23 @@ func (q *Queue) isEmptyNoLock() bool {
 }
 
 func (q *Queue) Add(val string) error {
+	return q.AddMany([]string{val})
+}
+
+func (q *Queue) AddMany(vals []string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.tail == nil {
 		return ErrImproperlyInitializedQueue
 	}
-	q.tail.val = val
-	n := node{
-		offset: q.tail.offset + 1,
+	for _, val := range vals {
+		q.tail.val = val
+		n := node{
+			offset: q.tail.offset + 1,
+		}
+		q.tail.next = &n
+		q.tail = &n
 	}
-	q.tail.next = &n
-	q.tail = &n
 	return nil
 }
 
