@@ -2,6 +2,7 @@ package queue
 
 import (
 	"errors"
+	"math"
 	"sync"
 )
 
@@ -9,6 +10,7 @@ var (
 	ErrQueueIsEmpty               = errors.New("queue is empty")
 	ErrImproperlyInitializedQueue = errors.New("improperly initialized queue, tail is nil")
 	ErrUnimplementedMethod        = errors.New("unimplemented")
+	ErrInvalidLimit               = errors.New("limit must be positive")
 )
 
 type node struct {
@@ -38,17 +40,6 @@ func (q *Queue) IsEmpty() bool {
 	return q.head.offset == q.tail.offset
 }
 
-func (q *Queue) Read() (string, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.head.offset == q.tail.offset {
-		return "", ErrQueueIsEmpty
-	}
-	res := q.head.val
-	q.head = q.head.next
-	return res, nil
-}
-
 func (q *Queue) Add(val string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -62,6 +53,37 @@ func (q *Queue) Add(val string) error {
 	q.tail.next = &n
 	q.tail = &n
 	return nil
+}
+
+func (q *Queue) Read() (string, error) {
+	res, err := q.ReadMany(1)
+	if err != nil {
+		return "", err
+	}
+	return res[0], nil
+}
+
+func (q *Queue) ReadMany(limit int) ([]string, error) {
+	if limit <= 0 {
+		return []string{}, ErrInvalidLimit
+	}
+	length := q.Length()
+	if length <= math.MaxInt {
+		limit = min(limit, int(length))
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	res := make([]string, limit)
+	if q.head.offset == q.tail.offset {
+		return []string{}, ErrQueueIsEmpty
+	}
+	node := q.head
+	for i := 0; i < limit; i++ {
+		res[i] = node.val
+		node = node.next
+	}
+	q.head = node
+	return res, nil
 }
 
 func (q *Queue) PeekNext() (string, error) {

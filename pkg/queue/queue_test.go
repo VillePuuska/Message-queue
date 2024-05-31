@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -73,6 +74,63 @@ func TestQueue(t *testing.T) {
 					t.Logf("Entire sorted list of Read() values: %v", vals)
 				}
 				t.FailNow()
+			}
+		}
+	})
+
+	t.Run("test ReadMany", func(t *testing.T) {
+		q := NewQueue()
+
+		_, err := q.ReadMany(1)
+		if err != ErrQueueIsEmpty {
+			t.Errorf("queue is empty and ReadMany(1) returned an incorrect error: got %q, expected %q", err, ErrQueueIsEmpty)
+		}
+
+		expected := []string{
+			"asd",
+			"dsa",
+		}
+		for _, s := range expected {
+			q.Add(s)
+		}
+
+		_, err = q.ReadMany(-2)
+		if err != ErrInvalidLimit {
+			t.Errorf("ReadMany(-2) returned an incorrect error: got %q, expected %q", err, ErrInvalidLimit)
+		}
+
+		got, err := q.ReadMany(2)
+		if err != nil {
+			t.Errorf("queue has 2 messages but ReadMany(2) returned an error: %q", err)
+		}
+		if !reflect.DeepEqual(got, expected) {
+			t.Errorf("ReadMany(2) returned an incorrect result: got %v, expected %v", got, expected)
+		}
+
+		expected = make([]string, Iterations)
+		var wg sync.WaitGroup
+		for i := 0; i < Iterations; i++ {
+			wg.Add(1)
+			go func(q *Queue, wg *sync.WaitGroup) {
+				q.Add(strconv.Itoa(i))
+				wg.Done()
+			}(q, &wg)
+			expected[i] = strconv.Itoa(i)
+		}
+		wg.Wait()
+		slices.Sort(expected)
+		got, err = q.ReadMany(Iterations)
+		if err != nil {
+			t.Errorf("queue has %d messages but ReadMany(%d) returned an error: %q", Iterations, Iterations, err)
+		}
+		slices.Sort(got)
+		if !reflect.DeepEqual(got, expected) {
+			for i := range got {
+				if got[i] == expected[i] {
+					continue
+				}
+				t.Errorf("ReadMany(%d) returned incorrect result, first difference at index %d: got %q, expected %q", Iterations, i, got[i], expected[i])
+				break
 			}
 		}
 	})
