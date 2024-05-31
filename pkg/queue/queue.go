@@ -37,6 +37,10 @@ func NewQueue() *Queue {
 func (q *Queue) IsEmpty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	return q.isEmptyNoLock()
+}
+
+func (q *Queue) isEmptyNoLock() bool {
 	return q.head.offset == q.tail.offset
 }
 
@@ -73,10 +77,10 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	res := make([]string, limit)
-	if q.head.offset == q.tail.offset {
+	if q.isEmptyNoLock() {
 		return []string{}, ErrQueueIsEmpty
 	}
+	res := make([]string, limit)
 	node := q.head
 	for i := 0; i < limit; i++ {
 		res[i] = node.val
@@ -89,7 +93,7 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 func (q *Queue) PeekNext() (string, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if q.head.offset == q.tail.offset {
+	if q.isEmptyNoLock() {
 		return "", ErrQueueIsEmpty
 	}
 	return q.head.val, nil
