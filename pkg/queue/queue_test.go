@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 const Iterations int = 1000000 // Specifies how many calls are done in all concurrent tests
@@ -239,7 +240,64 @@ func TestQueue(t *testing.T) {
 }
 
 func TestQueueConfig(t *testing.T) {
-	// TODO
-	// Validating in WithFoo
-	// Test queue.Cleanup()
+	t.Run("test QueueConfig parameter validations", func(t *testing.T) {
+		config := DefaultConfig()
+		_, err := config.WithRetentionCount(0)
+		assertError(t, err, ErrInvalidConfig, "config.WithRetentionCount(0) returned an incorrect error", false)
+		_, err = config.WithRetentionCount(-1)
+		assertError(t, err, ErrInvalidConfig, "config.WithRetentionCount(-1) returned an incorrect error", false)
+		_, err = config.WithRetentionTime(time.Second * 0)
+		assertError(t, err, ErrInvalidConfig, "config.WithRetentionTime(time.Second * 0) returned an incorrect error", false)
+		_, err = config.WithRetentionTime(-time.Second)
+		assertError(t, err, ErrInvalidConfig, "config.WithRetentionTime(-time.Second) returned an incorrect error", false)
+	})
+
+	t.Run("test Queue cleanups with QueueConfig parameters", func(t *testing.T) {
+		queueDefaultConfig := NewQueue()
+		configLowRetentionCount, _ := queueDefaultConfig.config.WithRetentionCount(1)
+		queueLowRetentionCount := NewQueueWithConfig(configLowRetentionCount)
+		configLowRetentionTime, _ := queueDefaultConfig.config.WithRetentionTime(time.Nanosecond)
+		queueLowRetentionTime := NewQueueWithConfig(configLowRetentionTime)
+		configLowRetentionCountAutoCleanup, _ := configLowRetentionCount.WithAutoCleanup(true)
+		queueLowRetentionCountAutoCleanup := NewQueueWithConfig(configLowRetentionCountAutoCleanup)
+
+		vals := []string{
+			"asd",
+			"ddd",
+		}
+		_ = queueDefaultConfig.AddMany(vals)
+		_ = queueLowRetentionCount.AddMany(vals)
+		_ = queueLowRetentionTime.AddMany(vals)
+		_ = queueLowRetentionCountAutoCleanup.AddMany(vals)
+		time.Sleep(time.Nanosecond * 5)
+
+		testTable := []struct {
+			name          string
+			queue         *Queue
+			initialLength int64
+			cleanupAmount int64
+			finalLength   int64
+		}{
+			{"default config", queueDefaultConfig, 2, 0, 2},
+			{"low retention count", queueLowRetentionCount, 2, 1, 1},
+			{"low retention time", queueLowRetentionTime, 2, 2, 0},
+			{"low retention count and auto cleanup", queueLowRetentionCountAutoCleanup, 1, 0, 1},
+		}
+
+		for _, test := range testTable {
+			got := test.queue.Length()
+			if got != test.initialLength {
+				t.Errorf("test %q has incorrect initial length: got %d, expected %d", test.name, got, test.initialLength)
+			}
+			got = test.queue.Cleanup()
+			if got != test.cleanupAmount {
+				t.Errorf("test %q Cleanup() deleted incorrect amount: got %d, expected %d", test.name, got, test.cleanupAmount)
+			}
+			got = test.queue.Length()
+			if got != test.finalLength {
+				t.Errorf("test %q has incorrect final length: got %d, expected %d", test.name, got, test.finalLength)
+			}
+		}
+
+	})
 }

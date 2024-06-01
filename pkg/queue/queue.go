@@ -20,6 +20,7 @@ var (
 	ErrImproperlyInitializedQueue = errors.New("improperly initialized queue, tail is nil")
 	ErrUnimplementedMethod        = errors.New("unimplemented")
 	ErrInvalidLimit               = errors.New("limit must be positive")
+	ErrInvalidConfig              = errors.New("invalid configuration parameter")
 )
 
 // Message type contains the actual message/string stored in a Queue
@@ -81,12 +82,18 @@ func (config QueueConfig) WithName(name string) (QueueConfig, error) {
 
 // Returns a new QueueConfig with the retentionCount changed and other parameters kept the same.
 func (config QueueConfig) WithRetentionCount(retentionCount int64) (QueueConfig, error) {
+	if retentionCount <= 0 {
+		return config, ErrInvalidConfig
+	}
 	config.retentionCount = retentionCount
 	return config, nil
 }
 
 // Returns a new QueueConfig with the retentionTime changed and other parameters kept the same.
 func (config QueueConfig) WithRetentionTime(retentionTime time.Duration) (QueueConfig, error) {
+	if retentionTime <= 0 {
+		return config, ErrInvalidConfig
+	}
 	config.retentionTime = retentionTime
 	return config, nil
 }
