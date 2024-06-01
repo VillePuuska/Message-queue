@@ -237,3 +237,9 @@ func TestQueue(t *testing.T) {
 		}
 	})
 }
+
+func TestQueueConfig(t *testing.T) {
+	// TODO
+	// Validating in WithFoo
+	// Test queue.Cleanup()
+}

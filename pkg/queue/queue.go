@@ -30,9 +30,9 @@ type Message struct {
 	LogAppendTime time.Time
 }
 
-// queueConfig type contains all the configuration options
+// QueueConfig type contains all the configuration options
 // for a Queue.
-type queueConfig struct {
+type QueueConfig struct {
 	name           string
 	retentionCount int64
 	retentionTime  time.Duration
@@ -55,13 +55,43 @@ type node struct {
 type Queue struct {
 	head   *node
 	tail   *node
-	config *queueConfig
+	config QueueConfig
 	mu     sync.Mutex
 }
 
-// Function to initialize a new empty Queue.
+// Function to create a default QueueConfig.
+// To change the configuration, use the WithFoo methods.
+// To create a Queue with a specific QueueConfig, use the NewQueueWithConfig function.
+func DefaultConfig() QueueConfig {
+	config := QueueConfig{
+		name:           "",
+		retentionCount: int64(1e9),
+		retentionTime:  time.Hour * 24,
+	}
+	return config
+}
+
+// Returns a new QueueConfig with the name changed and other parameters kept the same.
+func (config QueueConfig) WithName(name string) (QueueConfig, error) {
+	config.name = name
+	return config, nil
+}
+
+// Returns a new QueueConfig with the retentionCount changed and other parameters kept the same.
+func (config QueueConfig) WithRetentionCount(retentionCount int64) (QueueConfig, error) {
+	config.retentionCount = retentionCount
+	return config, nil
+}
+
+// Returns a new QueueConfig with the retentionTime changed and other parameters kept the same.
+func (config QueueConfig) WithRetentionTime(retentionTime time.Duration) (QueueConfig, error) {
+	config.retentionTime = retentionTime
+	return config, nil
+}
+
+// Function to initialize a new empty Queue with the default config.
 func NewQueue() *Queue {
-	config := queueConfig{}
+	config := DefaultConfig()
 	msg := Message{}
 	n := node{
 		message: &msg,
@@ -69,15 +99,36 @@ func NewQueue() *Queue {
 	res := Queue{
 		head:   &n,
 		tail:   &n,
-		config: &config,
+		config: config,
 	}
 	return &res
+}
+
+// Function to initialize a new empty Queue with the default config.
+func NewQueueWithConfig(config QueueConfig) *Queue {
+	msg := Message{}
+	n := node{
+		message: &msg,
+	}
+	res := Queue{
+		head:   &n,
+		tail:   &n,
+		config: config,
+	}
+	return &res
+}
+
+func (q *Queue) GetConfig() QueueConfig {
+	return q.config
 }
 
 // Checks if the Queue is empty.
 func (q *Queue) IsEmpty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	q.cleanup()
+
 	return q.isEmptyNoLock()
 }
 
@@ -92,6 +143,9 @@ func (q *Queue) isEmptyNoLock() bool {
 func (q *Queue) Length() int64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	q.cleanup()
+
 	return q.lengthNoLock()
 }
 
@@ -114,9 +168,11 @@ func (q *Queue) Add(val string) error {
 func (q *Queue) AddMany(vals []string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
 	if q.tail == nil {
 		return ErrImproperlyInitializedQueue
 	}
+
 	appendTime := time.Now()
 	for _, val := range vals {
 		q.tail.message.Val = val
@@ -130,6 +186,9 @@ func (q *Queue) AddMany(vals []string) error {
 		q.tail.next = &n
 		q.tail = &n
 	}
+
+	q.cleanup()
+
 	return nil
 }
 
@@ -153,6 +212,9 @@ func (q *Queue) ReadMany(limit int) ([]Message, error) {
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	q.cleanup()
+
 	length := q.lengthNoLock()
 	if length <= math.MaxInt {
 		limit = min(limit, int(length))
@@ -176,6 +238,9 @@ func (q *Queue) ReadMany(limit int) ([]Message, error) {
 func (q *Queue) PeekNext() (Message, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	q.cleanup()
+
 	if q.isEmptyNoLock() {
 		return Message{}, ErrQueueIsEmpty
 	}
@@ -187,4 +252,41 @@ func (q *Queue) PeekNext() (Message, error) {
 // Returns the error ErrUnimplementedMethod.
 func (q *Queue) PeekLast() (Message, error) {
 	return Message{}, ErrUnimplementedMethod
+}
+
+// Remove messages until there are at most retentionCount messages
+// and remove messages that are older than retentionTime.
+// Returns the count of deleted messages.
+func (q *Queue) Cleanup() int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.cleanup()
+}
+
+// Internal method to run cleanup on the Queue.
+// Does not lock the Queue; assumes that the Queue is already
+// locked when this function is called.
+// Returns the count of deleted messages.
+func (q *Queue) cleanup() int64 {
+	removed := int64(0)
+
+	length := q.lengthNoLock()
+	retentionCount := q.config.retentionCount
+	toRemove := max(0, length-retentionCount)
+	removed += toRemove
+	node := q.head
+	for i := int64(0); i < toRemove; i++ {
+		node = node.next
+	}
+	q.head = node
+
+	currTime := time.Now()
+	retentionTime := q.config.retentionTime
+	tailOffset := q.tail.message.Offset
+	for q.head.message.Offset < tailOffset && currTime.Sub(q.head.message.LogAppendTime) > retentionTime {
+		removed++
+		q.head = q.head.next
+	}
+
+	return removed
 }
