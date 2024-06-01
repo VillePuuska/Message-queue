@@ -36,6 +36,7 @@ type QueueConfig struct {
 	name           string
 	retentionCount int64
 	retentionTime  time.Duration
+	autoCleanup    bool
 }
 
 // Linked list node. Used for Queue internals.
@@ -67,6 +68,7 @@ func DefaultConfig() QueueConfig {
 		name:           "",
 		retentionCount: int64(1e9),
 		retentionTime:  time.Hour * 24,
+		autoCleanup:    false,
 	}
 	return config
 }
@@ -86,6 +88,12 @@ func (config QueueConfig) WithRetentionCount(retentionCount int64) (QueueConfig,
 // Returns a new QueueConfig with the retentionTime changed and other parameters kept the same.
 func (config QueueConfig) WithRetentionTime(retentionTime time.Duration) (QueueConfig, error) {
 	config.retentionTime = retentionTime
+	return config, nil
+}
+
+// Returns a new QueueConfig with the name changed and other parameters kept the same.
+func (config QueueConfig) WithAutoCleanup(autoCleanup bool) (QueueConfig, error) {
+	config.autoCleanup = autoCleanup
 	return config, nil
 }
 
@@ -127,7 +135,9 @@ func (q *Queue) IsEmpty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.cleanup()
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
 
 	return q.isEmptyNoLock()
 }
@@ -144,7 +154,9 @@ func (q *Queue) Length() int64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.cleanup()
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
 
 	return q.lengthNoLock()
 }
@@ -187,7 +199,9 @@ func (q *Queue) AddMany(vals []string) error {
 		q.tail = &n
 	}
 
-	q.cleanup()
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
 
 	return nil
 }
@@ -213,7 +227,9 @@ func (q *Queue) ReadMany(limit int) ([]Message, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.cleanup()
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
 
 	length := q.lengthNoLock()
 	if length <= math.MaxInt {
@@ -239,7 +255,9 @@ func (q *Queue) PeekNext() (Message, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.cleanup()
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
 
 	if q.isEmptyNoLock() {
 		return Message{}, ErrQueueIsEmpty
