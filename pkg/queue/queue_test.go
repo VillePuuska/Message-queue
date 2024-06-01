@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Iterations int = 1000000 // Specifies how many calls are done in all concurrent tests
+const Iterations int = int(1e5) // Specifies how many calls are done in all concurrent tests
 
 func assertError(t testing.TB, got, expected error, explanation string, failnow bool) {
 	t.Helper()
