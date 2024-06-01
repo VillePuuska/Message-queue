@@ -22,7 +22,7 @@ var (
 	ErrInvalidLimit               = errors.New("limit must be positive")
 )
 
-// Message type contains the actual message stored in a Queue
+// Message type contains the actual message/string stored in a Queue
 // and related metadata (offset, logAppendTime).
 type Message struct {
 	Val           string
@@ -134,10 +134,10 @@ func (q *Queue) AddMany(vals []string) error {
 }
 
 // Method to read a single message from the Queue.
-func (q *Queue) Read() (string, error) {
+func (q *Queue) Read() (Message, error) {
 	res, err := q.ReadMany(1)
 	if err != nil {
-		return "", err
+		return Message{}, err
 	}
 	return res[0], nil
 }
@@ -147,9 +147,9 @@ func (q *Queue) Read() (string, error) {
 //
 // If `limit` is non-positive, returns the error ErrInvalidLimit.
 // If the Queue is empty, returns the error ErrQueueIsEmpty.
-func (q *Queue) ReadMany(limit int) ([]string, error) {
+func (q *Queue) ReadMany(limit int) ([]Message, error) {
 	if limit <= 0 {
-		return []string{}, ErrInvalidLimit
+		return []Message{}, ErrInvalidLimit
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -158,12 +158,12 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 		limit = min(limit, int(length))
 	}
 	if q.isEmptyNoLock() {
-		return []string{}, ErrQueueIsEmpty
+		return []Message{}, ErrQueueIsEmpty
 	}
-	res := make([]string, limit)
+	res := make([]Message, limit)
 	node := q.head
 	for i := 0; i < limit; i++ {
-		res[i] = node.message.Val
+		res[i] = *node.message
 		node = node.next
 	}
 	q.head = node
@@ -173,18 +173,18 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 // Method to get the next message without consuming it like Read does.
 //
 // If the Queue is empty, returns the error ErrQueueIsEmpty.
-func (q *Queue) PeekNext() (string, error) {
+func (q *Queue) PeekNext() (Message, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.isEmptyNoLock() {
-		return "", ErrQueueIsEmpty
+		return Message{}, ErrQueueIsEmpty
 	}
-	return q.head.message.Val, nil
+	return *q.head.message, nil
 }
 
 // TODO
 // Not yet implemented.
 // Returns the error ErrUnimplementedMethod.
-func (q *Queue) PeekLast() (string, error) {
-	return "", ErrUnimplementedMethod
+func (q *Queue) PeekLast() (Message, error) {
+	return Message{}, ErrUnimplementedMethod
 }

@@ -51,8 +51,8 @@ func TestQueue(t *testing.T) {
 		for i := 0; i < Iterations; i++ {
 			wg.Add(1)
 			go func(index int, wg *sync.WaitGroup) {
-				val, err := q.Read()
-				vals[index], _ = strconv.Atoi(val)
+				msg, err := q.Read()
+				vals[index], _ = strconv.Atoi(msg.Val)
 				errs[index] = err
 				wg.Done()
 			}(i, &wg)
@@ -97,8 +97,12 @@ func TestQueue(t *testing.T) {
 		assertError(t, err, ErrInvalidLimit, "ReadMany(-2) returned an incorrect error", false)
 
 		got, err := q.ReadMany(2)
+		gotVals := make([]string, len(got))
+		for i, msg := range got {
+			gotVals[i] = msg.Val
+		}
 		assertError(t, err, nil, "queue has 2 messages but ReadMany(2) returned an error", false)
-		if !reflect.DeepEqual(got, expected) {
+		if !reflect.DeepEqual(gotVals, expected) {
 			t.Errorf("ReadMany(2) returned an incorrect result: got %v, expected %v", got, expected)
 		}
 
@@ -109,10 +113,14 @@ func TestQueue(t *testing.T) {
 		err = q.AddMany(expected)
 		assertError(t, err, nil, "AddMany returned an unexpected error", false)
 		got, err = q.ReadMany(Iterations)
+		gotVals = make([]string, len(got))
+		for i, msg := range got {
+			gotVals[i] = msg.Val
+		}
 		assertError(t, err, nil, fmt.Sprintf("queue has %d messages but ReadMany(%d) returned an error", Iterations, Iterations), false)
 		if !reflect.DeepEqual(got, expected) {
 			for i := range got {
-				if got[i] == expected[i] {
+				if gotVals[i] == expected[i] {
 					continue
 				}
 				t.Errorf("ReadMany(%d) returned incorrect result, first difference at index %d: got %q, expected %q", Iterations, i, got[i], expected[i])
@@ -156,7 +164,7 @@ func TestQueue(t *testing.T) {
 		q.Add(expected)
 		got, err := q.PeekNext()
 		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got != expected {
+		if got.Val != expected {
 			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
 		}
 
@@ -165,14 +173,14 @@ func TestQueue(t *testing.T) {
 
 		got, err = q.PeekNext()
 		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got != expected {
+		if got.Val != expected {
 			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
 		}
 
 		_, _ = q.Read()
 		got, err = q.PeekNext()
 		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got != secondExpected {
+		if got.Val != secondExpected {
 			t.Errorf("PeekNext() returned %q, expected %q", got, secondExpected)
 		}
 
