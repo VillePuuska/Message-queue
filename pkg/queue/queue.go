@@ -12,6 +12,7 @@ import (
 	"errors"
 	"math"
 	"sync"
+	"time"
 )
 
 var (
@@ -21,11 +22,26 @@ var (
 	ErrInvalidLimit               = errors.New("limit must be positive")
 )
 
+// Message type contains the actual message stored in a Queue
+// and related metadata (offset, logAppendTime).
+type Message struct {
+	Val           string
+	Offset        int64
+	LogAppendTime time.Time
+}
+
+// queueConfig type contains all the configuration options
+// for a Queue.
+type queueConfig struct {
+	name           string
+	retentionCount int64
+	retentionTime  time.Duration
+}
+
 // Linked list node. Used for Queue internals.
 type node struct {
-	val    string
-	offset int64
-	next   *node
+	message *Message
+	next    *node
 }
 
 // Queue is a message queue.
@@ -37,17 +53,23 @@ type node struct {
 //
 // NOTE: never create a Queue directly; use NewQueue instead.
 type Queue struct {
-	head *node
-	tail *node
-	mu   sync.Mutex
+	head   *node
+	tail   *node
+	config *queueConfig
+	mu     sync.Mutex
 }
 
 // Function to initialize a new empty Queue.
 func NewQueue() *Queue {
-	n := node{}
+	config := queueConfig{}
+	msg := Message{}
+	n := node{
+		message: &msg,
+	}
 	res := Queue{
-		head: &n,
-		tail: &n,
+		head:   &n,
+		tail:   &n,
+		config: &config,
 	}
 	return &res
 }
@@ -63,7 +85,7 @@ func (q *Queue) IsEmpty() bool {
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
 func (q *Queue) isEmptyNoLock() bool {
-	return q.head.offset == q.tail.offset
+	return q.head.message.Offset == q.tail.message.Offset
 }
 
 // Returns the length of the Queue.
@@ -77,7 +99,7 @@ func (q *Queue) Length() int64 {
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
 func (q *Queue) lengthNoLock() int64 {
-	return q.tail.offset - q.head.offset
+	return q.tail.message.Offset - q.head.message.Offset
 }
 
 // Method to add a single message to the Queue.
@@ -95,10 +117,15 @@ func (q *Queue) AddMany(vals []string) error {
 	if q.tail == nil {
 		return ErrImproperlyInitializedQueue
 	}
+	appendTime := time.Now()
 	for _, val := range vals {
-		q.tail.val = val
+		q.tail.message.Val = val
+		q.tail.message.LogAppendTime = appendTime
+		msg := Message{
+			Offset: q.tail.message.Offset + 1,
+		}
 		n := node{
-			offset: q.tail.offset + 1,
+			message: &msg,
 		}
 		q.tail.next = &n
 		q.tail = &n
@@ -136,7 +163,7 @@ func (q *Queue) ReadMany(limit int) ([]string, error) {
 	res := make([]string, limit)
 	node := q.head
 	for i := 0; i < limit; i++ {
-		res[i] = node.val
+		res[i] = node.message.Val
 		node = node.next
 	}
 	q.head = node
@@ -152,7 +179,7 @@ func (q *Queue) PeekNext() (string, error) {
 	if q.isEmptyNoLock() {
 		return "", ErrQueueIsEmpty
 	}
-	return q.head.val, nil
+	return q.head.message.Val, nil
 }
 
 // TODO

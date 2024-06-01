@@ -41,8 +41,8 @@ func TestQueue(t *testing.T) {
 			}(q, &wg)
 		}
 		wg.Wait()
-		if q.tail.offset != int64(Iterations) {
-			t.Errorf("After %d Add() calls, incorrect offset: was %d, tail value was %q", Iterations, q.tail.offset, q.tail.val)
+		if q.tail.message.Offset != int64(Iterations) {
+			t.Errorf("After %d Add() calls, incorrect offset: was %d, tail value was %q", Iterations, q.tail.message.Offset, q.tail.message.Val)
 		}
 
 		// Test that we can concurrently Read() all values
