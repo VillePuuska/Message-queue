@@ -24,20 +24,20 @@ func assertError(t testing.TB, got, expected error, explanation string, failnow 
 
 func TestQueue(t *testing.T) {
 	t.Run("test Add() on manually initialized Queue returns correct error", func(t *testing.T) {
-		q := Queue{}
+		q := Queue[string]{}
 		err := q.Add("asd")
 		assertError(t, err, ErrImproperlyInitializedQueue, "Add() on a manually created queue returned incorrect error", false)
 	})
 
 	t.Run("concurrent Add() and Read()", func(t *testing.T) {
-		q := NewQueue()
+		q := NewQueue[int]()
 		var wg sync.WaitGroup
 
 		// Test that tail offset is correct after concurrent Add() calls
 		for i := 0; i < Iterations; i++ {
 			wg.Add(1)
-			go func(q *Queue, wg *sync.WaitGroup) {
-				q.Add(strconv.Itoa(i))
+			go func(q *Queue[int], wg *sync.WaitGroup) {
+				q.Add(i)
 				wg.Done()
 			}(q, &wg)
 		}
@@ -53,7 +53,7 @@ func TestQueue(t *testing.T) {
 			wg.Add(1)
 			go func(index int, wg *sync.WaitGroup) {
 				msg, err := q.Read()
-				vals[index], _ = strconv.Atoi(msg.Val)
+				vals[index] = msg.Val
 				errs[index] = err
 				wg.Done()
 			}(i, &wg)
@@ -81,7 +81,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("test AddMany and ReadMany", func(t *testing.T) {
-		q := NewQueue()
+		q := NewQueue[string]()
 
 		_, err := q.ReadMany(1)
 		assertError(t, err, ErrQueueIsEmpty, "queue is empty and ReadMany(1) returned an incorrect error", false)
@@ -131,7 +131,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("test IsEmpty()", func(t *testing.T) {
-		q := NewQueue()
+		q := NewQueue[string]()
 
 		if !q.IsEmpty() {
 			t.Error("freshly initialized queue, but IsEmpty() returned false, should return true")
@@ -156,7 +156,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("test PeekNext()", func(t *testing.T) {
-		q := NewQueue()
+		q := NewQueue[string]()
 
 		_, err := q.PeekNext()
 		assertError(t, err, ErrQueueIsEmpty, "PeekNext() on an empty queue returned incorrect error", false)
@@ -191,7 +191,7 @@ func TestQueue(t *testing.T) {
 	})
 
 	t.Run("test Length()", func(t *testing.T) {
-		q := NewQueue()
+		q := NewQueue[string]()
 
 		got := q.Length()
 		if got != 0 {
@@ -226,7 +226,7 @@ func TestQueue(t *testing.T) {
 		var wg sync.WaitGroup
 		for i := 0; i < Iterations; i++ {
 			wg.Add(1)
-			go func(q *Queue, wg *sync.WaitGroup) {
+			go func(q *Queue[string], wg *sync.WaitGroup) {
 				q.Add("asd")
 				wg.Done()
 			}(q, &wg)
@@ -253,13 +253,13 @@ func TestQueueConfig(t *testing.T) {
 	})
 
 	t.Run("test Queue cleanups with QueueConfig parameters", func(t *testing.T) {
-		queueDefaultConfig := NewQueue()
+		queueDefaultConfig := NewQueue[string]()
 		configLowRetentionCount, _ := queueDefaultConfig.config.WithRetentionCount(1)
-		queueLowRetentionCount := NewQueueWithConfig(configLowRetentionCount)
+		queueLowRetentionCount := NewQueueWithConfig[string](configLowRetentionCount)
 		configLowRetentionTime, _ := queueDefaultConfig.config.WithRetentionTime(time.Nanosecond)
-		queueLowRetentionTime := NewQueueWithConfig(configLowRetentionTime)
+		queueLowRetentionTime := NewQueueWithConfig[string](configLowRetentionTime)
 		configLowRetentionCountAutoCleanup, _ := configLowRetentionCount.WithAutoCleanup(true)
-		queueLowRetentionCountAutoCleanup := NewQueueWithConfig(configLowRetentionCountAutoCleanup)
+		queueLowRetentionCountAutoCleanup := NewQueueWithConfig[string](configLowRetentionCountAutoCleanup)
 
 		vals := []string{
 			"asd",
@@ -273,7 +273,7 @@ func TestQueueConfig(t *testing.T) {
 
 		testTable := []struct {
 			name          string
-			queue         *Queue
+			queue         *Queue[string]
 			initialLength int64
 			cleanupAmount int64
 			finalLength   int64

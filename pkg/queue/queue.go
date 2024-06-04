@@ -23,10 +23,10 @@ var (
 	ErrInvalidConfig              = errors.New("invalid configuration parameter")
 )
 
-// Message type contains the actual message/string stored in a Queue
+// Message type contains the actual message stored in a Queue
 // and related metadata (offset, logAppendTime).
-type Message struct {
-	Val           string
+type Message[T any] struct {
+	Val           T
 	Offset        int64
 	LogAppendTime time.Time
 }
@@ -41,22 +41,23 @@ type QueueConfig struct {
 }
 
 // Linked list node. Used for Queue internals.
-type node struct {
-	message *Message
-	next    *node
+type node[T any] struct {
+	message *Message[T]
+	next    *node[T]
 }
 
-// Queue is a message queue.
+// Queue[T] is a message queue that stores messages of type T (any).
 // Queue methods are safe to use concurrently in multiple goroutines.
 //
 // When messages are Read() from a Queue, they are discarded. There is no
 // retention after a message has been read. It is possible to get a single
 // message without discarding/consuming it with the method PeekNext().
 //
-// NOTE: never create a Queue directly; use NewQueue instead.
-type Queue struct {
-	head   *node
-	tail   *node
+// NOTE: never create a Queue directly; use NewQueue[T]() instead
+// to construct a Queue[T].
+type Queue[T any] struct {
+	head   *node[T]
+	tail   *node[T]
 	config QueueConfig
 	mu     sync.Mutex
 }
@@ -105,13 +106,14 @@ func (config QueueConfig) WithAutoCleanup(autoCleanup bool) (QueueConfig, error)
 }
 
 // Function to initialize a new empty Queue with the default config.
-func NewQueue() *Queue {
+// To create a Queue for messages of type T, call NewQueue[T]().
+func NewQueue[T any]() *Queue[T] {
 	config := DefaultConfig()
-	msg := Message{}
-	n := node{
+	msg := Message[T]{}
+	n := node[T]{
 		message: &msg,
 	}
-	res := Queue{
+	res := Queue[T]{
 		head:   &n,
 		tail:   &n,
 		config: config,
@@ -120,12 +122,13 @@ func NewQueue() *Queue {
 }
 
 // Function to initialize a new empty Queue with the default config.
-func NewQueueWithConfig(config QueueConfig) *Queue {
-	msg := Message{}
-	n := node{
+// To create a Queue for messages of type T, call NewQueueWithConfig[T]().
+func NewQueueWithConfig[T any](config QueueConfig) *Queue[T] {
+	msg := Message[T]{}
+	n := node[T]{
 		message: &msg,
 	}
-	res := Queue{
+	res := Queue[T]{
 		head:   &n,
 		tail:   &n,
 		config: config,
@@ -133,12 +136,12 @@ func NewQueueWithConfig(config QueueConfig) *Queue {
 	return &res
 }
 
-func (q *Queue) GetConfig() QueueConfig {
+func (q *Queue[T]) GetConfig() QueueConfig {
 	return q.config
 }
 
 // Checks if the Queue is empty.
-func (q *Queue) IsEmpty() bool {
+func (q *Queue[T]) IsEmpty() bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -152,12 +155,12 @@ func (q *Queue) IsEmpty() bool {
 // Internal method to check if the Queue is empty.
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
-func (q *Queue) isEmptyNoLock() bool {
+func (q *Queue[T]) isEmptyNoLock() bool {
 	return q.head.message.Offset == q.tail.message.Offset
 }
 
 // Returns the length of the Queue.
-func (q *Queue) Length() int64 {
+func (q *Queue[T]) Length() int64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -171,20 +174,20 @@ func (q *Queue) Length() int64 {
 // Internal method to get the length of the Queue.
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
-func (q *Queue) lengthNoLock() int64 {
+func (q *Queue[T]) lengthNoLock() int64 {
 	return q.tail.message.Offset - q.head.message.Offset
 }
 
 // Method to add a single message to the Queue.
-func (q *Queue) Add(val string) error {
-	return q.AddMany([]string{val})
+func (q *Queue[T]) Add(val T) error {
+	return q.AddMany([]T{val})
 }
 
 // Method to add multiple messages to the Queue.
 //
 // If the Queue has been improperly initialized, i.e. created manually,
 // returns the error ErrImproperlyInitializedQueue.
-func (q *Queue) AddMany(vals []string) error {
+func (q *Queue[T]) AddMany(vals []T) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -196,10 +199,10 @@ func (q *Queue) AddMany(vals []string) error {
 	for _, val := range vals {
 		q.tail.message.Val = val
 		q.tail.message.LogAppendTime = appendTime
-		msg := Message{
+		msg := Message[T]{
 			Offset: q.tail.message.Offset + 1,
 		}
-		n := node{
+		n := node[T]{
 			message: &msg,
 		}
 		q.tail.next = &n
@@ -214,10 +217,10 @@ func (q *Queue) AddMany(vals []string) error {
 }
 
 // Method to read a single message from the Queue.
-func (q *Queue) Read() (Message, error) {
+func (q *Queue[T]) Read() (Message[T], error) {
 	res, err := q.ReadMany(1)
 	if err != nil {
-		return Message{}, err
+		return Message[T]{}, err
 	}
 	return res[0], nil
 }
@@ -227,9 +230,9 @@ func (q *Queue) Read() (Message, error) {
 //
 // If `limit` is non-positive, returns the error ErrInvalidLimit.
 // If the Queue is empty, returns the error ErrQueueIsEmpty.
-func (q *Queue) ReadMany(limit int) ([]Message, error) {
+func (q *Queue[T]) ReadMany(limit int) ([]Message[T], error) {
 	if limit <= 0 {
-		return []Message{}, ErrInvalidLimit
+		return []Message[T]{}, ErrInvalidLimit
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -243,9 +246,9 @@ func (q *Queue) ReadMany(limit int) ([]Message, error) {
 		limit = min(limit, int(length))
 	}
 	if q.isEmptyNoLock() {
-		return []Message{}, ErrQueueIsEmpty
+		return []Message[T]{}, ErrQueueIsEmpty
 	}
-	res := make([]Message, limit)
+	res := make([]Message[T], limit)
 	node := q.head
 	for i := 0; i < limit; i++ {
 		res[i] = *node.message
@@ -258,7 +261,7 @@ func (q *Queue) ReadMany(limit int) ([]Message, error) {
 // Method to get the next message without consuming it like Read does.
 //
 // If the Queue is empty, returns the error ErrQueueIsEmpty.
-func (q *Queue) PeekNext() (Message, error) {
+func (q *Queue[T]) PeekNext() (Message[T], error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -267,7 +270,7 @@ func (q *Queue) PeekNext() (Message, error) {
 	}
 
 	if q.isEmptyNoLock() {
-		return Message{}, ErrQueueIsEmpty
+		return Message[T]{}, ErrQueueIsEmpty
 	}
 	return *q.head.message, nil
 }
@@ -275,14 +278,14 @@ func (q *Queue) PeekNext() (Message, error) {
 // TODO
 // Not yet implemented.
 // Returns the error ErrUnimplementedMethod.
-func (q *Queue) PeekLast() (Message, error) {
-	return Message{}, ErrUnimplementedMethod
+func (q *Queue[T]) PeekLast() (Message[T], error) {
+	return Message[T]{}, ErrUnimplementedMethod
 }
 
 // Remove messages until there are at most retentionCount messages
 // and remove messages that are older than retentionTime.
 // Returns the count of deleted messages.
-func (q *Queue) Cleanup() int64 {
+func (q *Queue[T]) Cleanup() int64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	return q.cleanup()
@@ -292,7 +295,7 @@ func (q *Queue) Cleanup() int64 {
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
 // Returns the count of deleted messages.
-func (q *Queue) cleanup() int64 {
+func (q *Queue[T]) cleanup() int64 {
 	removed := int64(0)
 
 	length := q.lengthNoLock()
