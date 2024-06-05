@@ -12,12 +12,32 @@ import (
 
 const Iterations int = int(1e5) // Specifies how many calls are done in all concurrent tests
 
-func assertError(t testing.TB, got, expected error, explanation string, failnow bool) {
+func assertEqual[T comparable](t testing.TB, got, expected T, explanation string, failnow bool) {
 	t.Helper()
 	if got != expected {
-		t.Errorf("%v: got %q, expected %q", explanation, got, expected)
+		t.Logf("%v: got %v, expected %v", explanation, got, expected)
 		if failnow {
 			t.FailNow()
+		} else {
+			t.Fail()
+		}
+	}
+}
+
+func assertDeepEqual[T comparable](t testing.TB, got, expected []T, explanation string, failnow bool) {
+	t.Helper()
+	if !reflect.DeepEqual(got, expected) {
+		for i := range got {
+			if got[i] == expected[i] {
+				continue
+			}
+			t.Logf("%v, first difference at index %d: got %v, expected %v", explanation, i, got[i], expected[i])
+			if failnow {
+				t.FailNow()
+			} else {
+				t.Fail()
+			}
+			break
 		}
 	}
 }
@@ -27,28 +47,28 @@ func TestQueue(t *testing.T) {
 		q := Queue[string]{}
 
 		_, err := q.IsEmpty()
-		assertError(t, err, ErrImproperlyInitializedQueue, "IsEmpty() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "IsEmpty() on a manually created queue returned incorrect error", false)
 
 		_, err = q.Length()
-		assertError(t, err, ErrImproperlyInitializedQueue, "Length() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "Length() on a manually created queue returned incorrect error", false)
 
 		err = q.Add("asd")
-		assertError(t, err, ErrImproperlyInitializedQueue, "Add() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "Add() on a manually created queue returned incorrect error", false)
 
 		err = q.AddMany([]string{"asd"})
-		assertError(t, err, ErrImproperlyInitializedQueue, "AddMany() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "AddMany() on a manually created queue returned incorrect error", false)
 
 		_, err = q.Read()
-		assertError(t, err, ErrImproperlyInitializedQueue, "Read() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "Read() on a manually created queue returned incorrect error", false)
 
 		_, err = q.ReadMany(10)
-		assertError(t, err, ErrImproperlyInitializedQueue, "ReadMany() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "ReadMany() on a manually created queue returned incorrect error", false)
 
 		_, err = q.PeekNext()
-		assertError(t, err, ErrImproperlyInitializedQueue, "PeekNext() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "PeekNext() on a manually created queue returned incorrect error", false)
 
 		_, err = q.Cleanup()
-		assertError(t, err, ErrImproperlyInitializedQueue, "Cleanup() on a manually created queue returned incorrect error", false)
+		assertEqual(t, err, ErrImproperlyInitializedQueue, "Cleanup() on a manually created queue returned incorrect error", false)
 	})
 
 	t.Run("concurrent Add() and Read()", func(t *testing.T) {
@@ -64,9 +84,7 @@ func TestQueue(t *testing.T) {
 			}(q, &wg)
 		}
 		wg.Wait()
-		if q.tail.message.Offset != int64(Iterations) {
-			t.Errorf("After %d Add() calls, incorrect offset: was %d, tail value was %q", Iterations, q.tail.message.Offset, q.tail.message.Val)
-		}
+		assertEqual(t, q.tail.message.Offset, int64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect offset", Iterations), false)
 
 		// Test that we can concurrently Read() all values
 		vals := make([]int, Iterations)
@@ -82,12 +100,12 @@ func TestQueue(t *testing.T) {
 		}
 		wg.Wait()
 		for _, err := range errs {
-			assertError(t, err, nil, "Read() returned an error while concurrently reading the queue", true)
+			assertEqual(t, err, nil, "Read() returned an error while concurrently reading the queue", true)
 		}
 
 		// Test that we get the correct error when we Read() after clearing the queue
 		_, err := q.Read()
-		assertError(t, err, ErrQueueIsEmpty, "Read() on an empty queue returned incorrect error", false)
+		assertEqual(t, err, ErrQueueIsEmpty, "Read() on an empty queue returned incorrect error", false)
 
 		// Test that the values Read() from the queue are correct, i.e. 0..Iterations-1
 		slices.Sort(vals)
@@ -106,7 +124,7 @@ func TestQueue(t *testing.T) {
 		q := NewQueue[string]()
 
 		_, err := q.ReadMany(1)
-		assertError(t, err, ErrQueueIsEmpty, "queue is empty and ReadMany(1) returned an incorrect error", false)
+		assertEqual(t, err, ErrQueueIsEmpty, "queue is empty and ReadMany(1) returned an incorrect error", false)
 
 		expected := []string{
 			"asd",
@@ -117,39 +135,29 @@ func TestQueue(t *testing.T) {
 		}
 
 		_, err = q.ReadMany(-2)
-		assertError(t, err, ErrInvalidLimit, "ReadMany(-2) returned an incorrect error", false)
+		assertEqual(t, err, ErrInvalidLimit, "ReadMany(-2) returned an incorrect error", false)
 
 		got, err := q.ReadMany(2)
 		gotVals := make([]string, len(got))
 		for i, msg := range got {
 			gotVals[i] = msg.Val
 		}
-		assertError(t, err, nil, "queue has 2 messages but ReadMany(2) returned an error", false)
-		if !reflect.DeepEqual(gotVals, expected) {
-			t.Errorf("ReadMany(2) returned an incorrect result: got %v, expected %v", got, expected)
-		}
+		assertEqual(t, err, nil, "queue has 2 messages but ReadMany(2) returned an error", false)
+		assertDeepEqual(t, gotVals, expected, "ReadMany(2) returned an incorrect result", false)
 
 		expected = make([]string, Iterations)
 		for i := 0; i < Iterations; i++ {
 			expected[i] = strconv.Itoa(i)
 		}
 		err = q.AddMany(expected)
-		assertError(t, err, nil, "AddMany returned an unexpected error", false)
+		assertEqual(t, err, nil, "AddMany returned an unexpected error", false)
 		got, err = q.ReadMany(Iterations)
 		gotVals = make([]string, len(got))
 		for i, msg := range got {
 			gotVals[i] = msg.Val
 		}
-		assertError(t, err, nil, fmt.Sprintf("queue has %d messages but ReadMany(%d) returned an error", Iterations, Iterations), false)
-		if !reflect.DeepEqual(got, expected) {
-			for i := range got {
-				if gotVals[i] == expected[i] {
-					continue
-				}
-				t.Errorf("ReadMany(%d) returned incorrect result, first difference at index %d: got %q, expected %q", Iterations, i, got[i], expected[i])
-				break
-			}
-		}
+		assertEqual(t, err, nil, fmt.Sprintf("queue has %d messages but ReadMany(%d) returned an error", Iterations, Iterations), false)
+		assertDeepEqual(t, gotVals, expected, fmt.Sprintf("ReadMany(%d) returned incorrect result", Iterations), false)
 	})
 
 	t.Run("test IsEmpty()", func(t *testing.T) {
@@ -165,7 +173,7 @@ func TestQueue(t *testing.T) {
 		}
 
 		_, err := q.Read()
-		assertError(t, err, nil, "queue has an element, but Read() returned an error", false)
+		assertEqual(t, err, nil, "queue has an element, but Read() returned an error", false)
 
 		if flag, _ := q.IsEmpty(); !flag {
 			t.Error("last element was read from queue, but IsEmpty() returned false, should return true")
@@ -181,68 +189,52 @@ func TestQueue(t *testing.T) {
 		q := NewQueue[string]()
 
 		_, err := q.PeekNext()
-		assertError(t, err, ErrQueueIsEmpty, "PeekNext() on an empty queue returned incorrect error", false)
+		assertEqual(t, err, ErrQueueIsEmpty, "PeekNext() on an empty queue returned incorrect error", false)
 
 		expected := "asd"
 		q.Add(expected)
 		got, err := q.PeekNext()
-		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got.Val != expected {
-			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
-		}
+		assertEqual(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
+		assertEqual(t, got.Val, expected, "PeekNext() incorrect result", false)
 
 		secondExpected := "aaaa"
 		q.Add(secondExpected)
 
 		got, err = q.PeekNext()
-		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got.Val != expected {
-			t.Errorf("PeekNext() returned %q, expected %q", got, expected)
-		}
+		assertEqual(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
+		assertEqual(t, got.Val, expected, "PeekNext() incorrect result", false)
 
 		_, _ = q.Read()
 		got, err = q.PeekNext()
-		assertError(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
-		if got.Val != secondExpected {
-			t.Errorf("PeekNext() returned %q, expected %q", got, secondExpected)
-		}
+		assertEqual(t, err, nil, "queue has a message, but PeekNext() returned an error", false)
+		assertEqual(t, got.Val, secondExpected, "PeekNext() incorrect result", false)
 
 		_, _ = q.Read()
 		_, err = q.PeekNext()
-		assertError(t, err, ErrQueueIsEmpty, "all messages have been Read() from queue, but PeekNext() did not return an error", false)
+		assertEqual(t, err, ErrQueueIsEmpty, "all messages have been Read() from queue, but PeekNext() did not return an error", false)
 	})
 
 	t.Run("test Length()", func(t *testing.T) {
 		q := NewQueue[string]()
 
 		got, _ := q.Length()
-		if got != 0 {
-			t.Errorf("freshly initialized queue, but Length() returned %d, expected 0", got)
-		}
+		assertEqual(t, got, 0, "freshly initialized queue, incorrect Length()", false)
 
 		q.Add("asd")
 		got, _ = q.Length()
-		if got != 1 {
-			t.Errorf("Length() returned %d, expected 1", got)
-		}
+		assertEqual(t, got, 1, "1 message in Queue, incorrect Length()", false)
 
 		q.Add("aaaaaa")
 		got, _ = q.Length()
-		if got != 2 {
-			t.Errorf("Length() returned %d, expected 2", got)
-		}
+		assertEqual(t, got, 2, "2 messages in Queue, incorrect Length()", false)
 
 		_, _ = q.Read()
 		got, _ = q.Length()
-		if got != 1 {
-			t.Errorf("Length() returned %d, expected 1", got)
-		}
+		assertEqual(t, got, 1, "1 message in Queue, incorrect Length()", false)
 
 		_, _ = q.Read()
 		got, _ = q.Length()
-		if got != 0 {
-			t.Errorf("Length() returned %d, expected 0", got)
-		}
+		assertEqual(t, got, 0, "empty Queue, incorrect Length()", false)
 
 		// Test that Length() is correct after concurrent Add() calls
 		var wg sync.WaitGroup
@@ -255,9 +247,7 @@ func TestQueue(t *testing.T) {
 		}
 		wg.Wait()
 		got, _ = q.Length()
-		if got != int64(Iterations) {
-			t.Errorf("After %d Add() calls, Length() returned %d, expected %d", Iterations, got, Iterations)
-		}
+		assertEqual(t, got, int64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect Length()", Iterations), false)
 	})
 }
 
@@ -265,13 +255,13 @@ func TestQueueConfig(t *testing.T) {
 	t.Run("test QueueConfig parameter validations", func(t *testing.T) {
 		config := DefaultConfig()
 		_, err := config.WithRetentionCount(0)
-		assertError(t, err, ErrInvalidConfig, "config.WithRetentionCount(0) returned an incorrect error", false)
+		assertEqual(t, err, ErrInvalidConfig, "config.WithRetentionCount(0) returned an incorrect error", false)
 		_, err = config.WithRetentionCount(-1)
-		assertError(t, err, ErrInvalidConfig, "config.WithRetentionCount(-1) returned an incorrect error", false)
+		assertEqual(t, err, ErrInvalidConfig, "config.WithRetentionCount(-1) returned an incorrect error", false)
 		_, err = config.WithRetentionTime(time.Second * 0)
-		assertError(t, err, ErrInvalidConfig, "config.WithRetentionTime(time.Second * 0) returned an incorrect error", false)
+		assertEqual(t, err, ErrInvalidConfig, "config.WithRetentionTime(time.Second * 0) returned an incorrect error", false)
 		_, err = config.WithRetentionTime(-time.Second)
-		assertError(t, err, ErrInvalidConfig, "config.WithRetentionTime(-time.Second) returned an incorrect error", false)
+		assertEqual(t, err, ErrInvalidConfig, "config.WithRetentionTime(-time.Second) returned an incorrect error", false)
 	})
 
 	t.Run("test Queue cleanups with QueueConfig parameters", func(t *testing.T) {
@@ -308,17 +298,13 @@ func TestQueueConfig(t *testing.T) {
 
 		for _, test := range testTable {
 			got, _ := test.queue.Length()
-			if got != test.initialLength {
-				t.Errorf("test %q has incorrect initial length: got %d, expected %d", test.name, got, test.initialLength)
-			}
+			assertEqual(t, got, test.initialLength, fmt.Sprintf("test %q has incorrect initial length", test.name), false)
+
 			got, _ = test.queue.Cleanup()
-			if got != test.cleanupAmount {
-				t.Errorf("test %q Cleanup() deleted incorrect amount: got %d, expected %d", test.name, got, test.cleanupAmount)
-			}
+			assertEqual(t, got, test.cleanupAmount, fmt.Sprintf("test %q Cleanup() deleted incorrect amount", test.name), false)
+
 			got, _ = test.queue.Length()
-			if got != test.finalLength {
-				t.Errorf("test %q has incorrect final length: got %d, expected %d", test.name, got, test.finalLength)
-			}
+			assertEqual(t, got, test.finalLength, fmt.Sprintf("test %q has incorrect final length", test.name), false)
 		}
 
 	})
