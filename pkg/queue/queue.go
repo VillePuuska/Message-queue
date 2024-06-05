@@ -136,20 +136,28 @@ func NewQueueWithConfig[T any](config QueueConfig) *Queue[T] {
 	return &res
 }
 
+func (q *Queue[T]) isProperlyInitialized() bool {
+	return q.tail != nil
+}
+
 func (q *Queue[T]) GetConfig() QueueConfig {
 	return q.config
 }
 
 // Checks if the Queue is empty.
-func (q *Queue[T]) IsEmpty() bool {
+func (q *Queue[T]) IsEmpty() (bool, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	if !q.isProperlyInitialized() {
+		return false, ErrImproperlyInitializedQueue
+	}
 
 	if q.config.autoCleanup {
 		q.cleanup()
 	}
 
-	return q.isEmptyNoLock()
+	return q.isEmptyNoLock(), nil
 }
 
 // Internal method to check if the Queue is empty.
@@ -160,15 +168,19 @@ func (q *Queue[T]) isEmptyNoLock() bool {
 }
 
 // Returns the length of the Queue.
-func (q *Queue[T]) Length() int64 {
+func (q *Queue[T]) Length() (int64, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+
+	if !q.isProperlyInitialized() {
+		return 0, ErrImproperlyInitializedQueue
+	}
 
 	if q.config.autoCleanup {
 		q.cleanup()
 	}
 
-	return q.lengthNoLock()
+	return q.lengthNoLock(), nil
 }
 
 // Internal method to get the length of the Queue.
@@ -191,7 +203,7 @@ func (q *Queue[T]) AddMany(vals []T) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if q.tail == nil {
+	if !q.isProperlyInitialized() {
 		return ErrImproperlyInitializedQueue
 	}
 
@@ -237,6 +249,14 @@ func (q *Queue[T]) ReadMany(limit int) ([]Message[T], error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	if !q.isProperlyInitialized() {
+		return []Message[T]{}, ErrImproperlyInitializedQueue
+	}
+
+	if q.isEmptyNoLock() {
+		return []Message[T]{}, ErrQueueIsEmpty
+	}
+
 	if q.config.autoCleanup {
 		q.cleanup()
 	}
@@ -244,9 +264,6 @@ func (q *Queue[T]) ReadMany(limit int) ([]Message[T], error) {
 	length := q.lengthNoLock()
 	if length <= math.MaxInt {
 		limit = min(limit, int(length))
-	}
-	if q.isEmptyNoLock() {
-		return []Message[T]{}, ErrQueueIsEmpty
 	}
 	res := make([]Message[T], limit)
 	node := q.head
@@ -265,13 +282,18 @@ func (q *Queue[T]) PeekNext() (Message[T], error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	if q.config.autoCleanup {
-		q.cleanup()
+	if !q.isProperlyInitialized() {
+		return Message[T]{}, ErrImproperlyInitializedQueue
 	}
 
 	if q.isEmptyNoLock() {
 		return Message[T]{}, ErrQueueIsEmpty
 	}
+
+	if q.config.autoCleanup {
+		q.cleanup()
+	}
+
 	return *q.head.message, nil
 }
 
@@ -285,10 +307,15 @@ func (q *Queue[T]) PeekLast() (Message[T], error) {
 // Remove messages until there are at most retentionCount messages
 // and remove messages that are older than retentionTime.
 // Returns the count of deleted messages.
-func (q *Queue[T]) Cleanup() int64 {
+func (q *Queue[T]) Cleanup() (int64, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return q.cleanup()
+
+	if !q.isProperlyInitialized() {
+		return 0, ErrImproperlyInitializedQueue
+	}
+
+	return q.cleanup(), nil
 }
 
 // Internal method to run cleanup on the Queue.

@@ -23,10 +23,32 @@ func assertError(t testing.TB, got, expected error, explanation string, failnow 
 }
 
 func TestQueue(t *testing.T) {
-	t.Run("test Add() on manually initialized Queue returns correct error", func(t *testing.T) {
+	t.Run("test calling exported methods on a manually initialized Queue return correct errors", func(t *testing.T) {
 		q := Queue[string]{}
-		err := q.Add("asd")
+
+		_, err := q.IsEmpty()
+		assertError(t, err, ErrImproperlyInitializedQueue, "IsEmpty() on a manually created queue returned incorrect error", false)
+
+		_, err = q.Length()
+		assertError(t, err, ErrImproperlyInitializedQueue, "Length() on a manually created queue returned incorrect error", false)
+
+		err = q.Add("asd")
 		assertError(t, err, ErrImproperlyInitializedQueue, "Add() on a manually created queue returned incorrect error", false)
+
+		err = q.AddMany([]string{"asd"})
+		assertError(t, err, ErrImproperlyInitializedQueue, "AddMany() on a manually created queue returned incorrect error", false)
+
+		_, err = q.Read()
+		assertError(t, err, ErrImproperlyInitializedQueue, "Read() on a manually created queue returned incorrect error", false)
+
+		_, err = q.ReadMany(10)
+		assertError(t, err, ErrImproperlyInitializedQueue, "ReadMany() on a manually created queue returned incorrect error", false)
+
+		_, err = q.PeekNext()
+		assertError(t, err, ErrImproperlyInitializedQueue, "PeekNext() on a manually created queue returned incorrect error", false)
+
+		_, err = q.Cleanup()
+		assertError(t, err, ErrImproperlyInitializedQueue, "Cleanup() on a manually created queue returned incorrect error", false)
 	})
 
 	t.Run("concurrent Add() and Read()", func(t *testing.T) {
@@ -133,24 +155,24 @@ func TestQueue(t *testing.T) {
 	t.Run("test IsEmpty()", func(t *testing.T) {
 		q := NewQueue[string]()
 
-		if !q.IsEmpty() {
+		if flag, _ := q.IsEmpty(); !flag {
 			t.Error("freshly initialized queue, but IsEmpty() returned false, should return true")
 		}
 
 		q.Add("asd")
-		if q.IsEmpty() {
+		if flag, _ := q.IsEmpty(); flag {
 			t.Error("queue has one element, but IsEmpty() returned true, should return false")
 		}
 
 		_, err := q.Read()
 		assertError(t, err, nil, "queue has an element, but Read() returned an error", false)
 
-		if !q.IsEmpty() {
+		if flag, _ := q.IsEmpty(); !flag {
 			t.Error("last element was read from queue, but IsEmpty() returned false, should return true")
 		}
 
 		q.Add("")
-		if q.IsEmpty() {
+		if flag, _ := q.IsEmpty(); flag {
 			t.Error("queue has one element, but IsEmpty() returned true, should return false")
 		}
 	})
@@ -193,31 +215,31 @@ func TestQueue(t *testing.T) {
 	t.Run("test Length()", func(t *testing.T) {
 		q := NewQueue[string]()
 
-		got := q.Length()
+		got, _ := q.Length()
 		if got != 0 {
 			t.Errorf("freshly initialized queue, but Length() returned %d, expected 0", got)
 		}
 
 		q.Add("asd")
-		got = q.Length()
+		got, _ = q.Length()
 		if got != 1 {
 			t.Errorf("Length() returned %d, expected 1", got)
 		}
 
 		q.Add("aaaaaa")
-		got = q.Length()
+		got, _ = q.Length()
 		if got != 2 {
 			t.Errorf("Length() returned %d, expected 2", got)
 		}
 
 		_, _ = q.Read()
-		got = q.Length()
+		got, _ = q.Length()
 		if got != 1 {
 			t.Errorf("Length() returned %d, expected 1", got)
 		}
 
 		_, _ = q.Read()
-		got = q.Length()
+		got, _ = q.Length()
 		if got != 0 {
 			t.Errorf("Length() returned %d, expected 0", got)
 		}
@@ -232,7 +254,7 @@ func TestQueue(t *testing.T) {
 			}(q, &wg)
 		}
 		wg.Wait()
-		got = q.Length()
+		got, _ = q.Length()
 		if got != int64(Iterations) {
 			t.Errorf("After %d Add() calls, Length() returned %d, expected %d", Iterations, got, Iterations)
 		}
@@ -285,15 +307,15 @@ func TestQueueConfig(t *testing.T) {
 		}
 
 		for _, test := range testTable {
-			got := test.queue.Length()
+			got, _ := test.queue.Length()
 			if got != test.initialLength {
 				t.Errorf("test %q has incorrect initial length: got %d, expected %d", test.name, got, test.initialLength)
 			}
-			got = test.queue.Cleanup()
+			got, _ = test.queue.Cleanup()
 			if got != test.cleanupAmount {
 				t.Errorf("test %q Cleanup() deleted incorrect amount: got %d, expected %d", test.name, got, test.cleanupAmount)
 			}
-			got = test.queue.Length()
+			got, _ = test.queue.Length()
 			if got != test.finalLength {
 				t.Errorf("test %q has incorrect final length: got %d, expected %d", test.name, got, test.finalLength)
 			}
