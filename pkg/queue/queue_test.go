@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"sync"
@@ -219,6 +220,68 @@ func TestQueue(t *testing.T) {
 		wg.Wait()
 		got, _ = q.Length()
 		testutil.AssertEqual(t, got, uint64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect Length()", Iterations), false)
+	})
+
+	t.Run("test overflowing offsets", func(t *testing.T) {
+		q := NewQueue[string]()
+
+		expected := "asd"
+		q.Add(expected)
+		q.head.message.Offset = math.MaxUint64 - 1
+		q.tail.message.Offset = math.MaxUint64
+
+		got, _ := q.Length()
+		testutil.AssertEqual(t, got, 1, "1 message in Queue, offset overflowing, incorrect Length()", false)
+
+		flag, err := q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, false, "IsEmpty() returned an incorrect value after overflowing offset", false)
+
+		msg, err := q.Read()
+		testutil.AssertEqual(t, err, nil, "Read() returned an error when there was a message", false)
+		testutil.AssertEqual(t, msg.Val, expected, "Read() returned a message with incorrect value", false)
+
+		flag, err = q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, true, "IsEmpty() returned an incorrect value after overflowing offset", false)
+
+		q.Add(expected)
+
+		testutil.AssertEqual(t, q.tail.message.Offset, 0, "q.tail.message.Offset is incorrect after overflowing", false)
+
+		got, _ = q.Length()
+		testutil.AssertEqual(t, got, 1, "1 message in Queue, offset overflowing, incorrect Length()", false)
+
+		flag, err = q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, false, "IsEmpty() returned an incorrect value after overflowing offset", false)
+
+		msg, err = q.Read()
+		testutil.AssertEqual(t, err, nil, "Read() returned an error when there was a message", false)
+		testutil.AssertEqual(t, msg.Val, expected, "Read() returned a message with incorrect value", false)
+
+		flag, err = q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, true, "IsEmpty() returned an incorrect value after overflowing offset", false)
+
+		q.Add(expected)
+
+		testutil.AssertEqual(t, q.tail.message.Offset, 1, "q.tail.message.Offset is incorrect after overflowing", false)
+
+		got, _ = q.Length()
+		testutil.AssertEqual(t, got, 1, "1 message in Queue, offset overflowing, incorrect Length()", false)
+
+		flag, err = q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, false, "IsEmpty() returned an incorrect value after overflowing offset", false)
+
+		msg, err = q.Read()
+		testutil.AssertEqual(t, err, nil, "Read() returned an error when there was a message", false)
+		testutil.AssertEqual(t, msg.Val, expected, "Read() returned a message with incorrect value", false)
+
+		flag, err = q.IsEmpty()
+		testutil.AssertEqual(t, err, nil, "IsEmpty() returned an unexpected error", false)
+		testutil.AssertEqual(t, flag, true, "IsEmpty() returned an incorrect value after overflowing offset", false)
 	})
 }
 
