@@ -55,7 +55,7 @@ func TestQueue(t *testing.T) {
 			}(q, &wg)
 		}
 		wg.Wait()
-		testutil.AssertEqual(t, q.tail.message.Offset, int64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect offset", Iterations), false)
+		testutil.AssertEqual(t, q.tail.message.Offset, uint64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect offset", Iterations), false)
 
 		// Test that we can concurrently Read() all values
 		vals := make([]int, Iterations)
@@ -218,7 +218,7 @@ func TestQueue(t *testing.T) {
 		}
 		wg.Wait()
 		got, _ = q.Length()
-		testutil.AssertEqual(t, got, int64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect Length()", Iterations), false)
+		testutil.AssertEqual(t, got, uint64(Iterations), fmt.Sprintf("After %d Add() calls, incorrect Length()", Iterations), false)
 	})
 }
 
@@ -227,8 +227,6 @@ func TestQueueConfig(t *testing.T) {
 		config := DefaultConfig()
 		_, err := config.WithRetentionCount(0)
 		testutil.AssertEqual(t, err, ErrInvalidConfig, "config.WithRetentionCount(0) returned an incorrect error", false)
-		_, err = config.WithRetentionCount(-1)
-		testutil.AssertEqual(t, err, ErrInvalidConfig, "config.WithRetentionCount(-1) returned an incorrect error", false)
 		_, err = config.WithRetentionTime(time.Second * 0)
 		testutil.AssertEqual(t, err, ErrInvalidConfig, "config.WithRetentionTime(time.Second * 0) returned an incorrect error", false)
 		_, err = config.WithRetentionTime(-time.Second)
@@ -257,9 +255,9 @@ func TestQueueConfig(t *testing.T) {
 		testTable := []struct {
 			name          string
 			queue         *Queue[string]
-			initialLength int64
-			cleanupAmount int64
-			finalLength   int64
+			initialLength uint64
+			cleanupAmount uint64
+			finalLength   uint64
 		}{
 			{"default config", queueDefaultConfig, 2, 0, 2},
 			{"low retention count", queueLowRetentionCount, 2, 1, 1},

@@ -27,7 +27,7 @@ var (
 // and related metadata (offset, logAppendTime).
 type Message[T any] struct {
 	Val           T
-	Offset        int64
+	Offset        uint64
 	LogAppendTime time.Time
 }
 
@@ -35,7 +35,7 @@ type Message[T any] struct {
 // for a Queue.
 type QueueConfig struct {
 	name           string
-	retentionCount int64
+	retentionCount uint64
 	retentionTime  time.Duration
 	autoCleanup    bool
 }
@@ -68,7 +68,7 @@ type Queue[T any] struct {
 func DefaultConfig() QueueConfig {
 	config := QueueConfig{
 		name:           "",
-		retentionCount: int64(1e9),
+		retentionCount: uint64(1e9),
 		retentionTime:  time.Hour * 24,
 		autoCleanup:    false,
 	}
@@ -82,7 +82,7 @@ func (config QueueConfig) WithName(name string) (QueueConfig, error) {
 }
 
 // Returns a new QueueConfig with the retentionCount changed and other parameters kept the same.
-func (config QueueConfig) WithRetentionCount(retentionCount int64) (QueueConfig, error) {
+func (config QueueConfig) WithRetentionCount(retentionCount uint64) (QueueConfig, error) {
 	if retentionCount <= 0 {
 		return config, ErrInvalidConfig
 	}
@@ -168,7 +168,7 @@ func (q *Queue[T]) isEmptyNoLock() bool {
 }
 
 // Returns the length of the Queue.
-func (q *Queue[T]) Length() (int64, error) {
+func (q *Queue[T]) Length() (uint64, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -186,7 +186,7 @@ func (q *Queue[T]) Length() (int64, error) {
 // Internal method to get the length of the Queue.
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
-func (q *Queue[T]) lengthNoLock() int64 {
+func (q *Queue[T]) lengthNoLock() uint64 {
 	return q.tail.message.Offset - q.head.message.Offset
 }
 
@@ -307,7 +307,7 @@ func (q *Queue[T]) PeekLast() (Message[T], error) {
 // Remove messages until there are at most retentionCount messages
 // and remove messages that are older than retentionTime.
 // Returns the count of deleted messages.
-func (q *Queue[T]) Cleanup() (int64, error) {
+func (q *Queue[T]) Cleanup() (uint64, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -322,15 +322,18 @@ func (q *Queue[T]) Cleanup() (int64, error) {
 // Does not lock the Queue; assumes that the Queue is already
 // locked when this function is called.
 // Returns the count of deleted messages.
-func (q *Queue[T]) cleanup() int64 {
-	removed := int64(0)
+func (q *Queue[T]) cleanup() uint64 {
+	removed := uint64(0)
 
 	length := q.lengthNoLock()
 	retentionCount := q.config.retentionCount
-	toRemove := max(0, length-retentionCount)
+	var toRemove uint64
+	if length > retentionCount {
+		toRemove = length - retentionCount
+	}
 	removed += toRemove
 	node := q.head
-	for i := int64(0); i < toRemove; i++ {
+	for i := uint64(0); i < toRemove; i++ {
 		node = node.next
 	}
 	q.head = node
